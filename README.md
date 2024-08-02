@@ -152,3 +152,9 @@ Summary       11.3101  ms
 
 GNU General Public License v3.0 or later
 See [`COPYING`](LICENSE.md) to see the full text.
+
+
+### obj class
+CLASS_NAMES: ['car','truck', 'construction_vehicle', 'bus', 'trailer',
+              'barrier', 'motorcycle', 'bicycle', 'pedestrian', 'traffic_cone']
+kNumPointFeature = 5; // [x, y, z, i,0]
