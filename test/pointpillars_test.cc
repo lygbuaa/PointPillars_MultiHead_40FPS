@@ -10,6 +10,83 @@ using namespace std;
 
 #define LOGPF(format, ...) fprintf(stderr ,"[%s:%d] " format "\n", __FILE__, __LINE__, ##__VA_ARGS__)
 
+bool NusPCD2Txt(const std::string& pcd_file_path, const std::string& txt_file_path)
+{
+    if(pcd_file_path.empty() || txt_file_path.empty())
+    {
+        return false;
+    }
+    std::ifstream pcd_file(pcd_file_path, std::ios::in | std::ios::binary);
+    if (!pcd_file.good()) 
+    {
+        LOGPF("Error during openning the pcd_file: %s.", pcd_file_path.c_str());
+        return false;
+    }
+
+    std::ofstream txt_file;
+    txt_file.open(txt_file_path , std::ios::out);  
+
+    float max_i = 0;
+    int counter = 0;
+    while (pcd_file) 
+    {
+        char tmp_buf[512] = {0};
+        float x,y,z,i,r;
+        pcd_file.read(reinterpret_cast<char*>(&x), sizeof(float));
+        pcd_file.read(reinterpret_cast<char*>(&y), sizeof(float));
+        pcd_file.read(reinterpret_cast<char*>(&z), sizeof(float));
+        pcd_file.read(reinterpret_cast<char*>(&i), sizeof(float));
+        pcd_file.read(reinterpret_cast<char*>(&r), sizeof(float));
+        max_i = std::max(max_i, i);
+        txt_file << std::scientific << std::setprecision(9) << x << " " << y << " " << z << " " << i << " " << r << std::endl;
+        counter ++;
+    }
+    LOGPF("load pcd_file (%s) points: (%d)", pcd_file_path.c_str(), counter);
+    pcd_file.close();
+    txt_file.close();
+
+    return true;
+}
+
+int Txt2ArrayV2(float* &points_array , string file_name , int num_feature = 4)
+{
+  ifstream InFile;
+  InFile.open(file_name.data());
+  assert(InFile.is_open());
+  std::vector<float> temp_points;
+
+  std::string line;
+  uint32_t counter = 0;
+  while(std::getline(InFile, line))
+  {
+    counter ++;
+    // LOGPF("line[%d]: %s", counter, line.c_str());
+    float x, y, z, i, r;
+    sscanf(line.c_str(), "%e %e %e %e %e\n", &x, &y, &z, &i, &r);
+    // LOGPF("point[%d] x=%f, y=%f, z=%f, i=%f, r=%f", x, y, z, i, r);
+    temp_points.push_back(x);
+    temp_points.push_back(y);
+    temp_points.push_back(z);
+    temp_points.push_back(i);
+    temp_points.push_back(r);
+  }
+
+  InFile.close();
+  LOGPF("temp_points size: %ld", temp_points.size());
+  size_t points_array_size = counter * sizeof(float) * num_feature;
+
+  points_array = new float[points_array_size];
+  for (int i = 0 ; i < temp_points.size() ; ++i) {
+    counter += 1;
+    if(counter % 5 == 0)
+    {
+      continue;
+    }
+    points_array[i] = temp_points[i];
+  }
+  return temp_points.size() / num_feature;
+}
+
 int Txt2Arrary( float* &points_array , string file_name , int num_feature = 4)
 {
   ifstream InFile;
@@ -42,12 +119,17 @@ int Txt2Arrary( float* &points_array , string file_name , int num_feature = 4)
   // printf("Done");
 };
 
-void Boxes2Txt( std::vector<float> boxes , string file_name , int num_feature = 7)
+void Boxes2Txt( std::vector<float> boxes , std::vector<int> cls, string file_name , int num_feature = 7)
 {
     ofstream ofFile;
     ofFile.open(file_name , std::ios::out );  
     if (ofFile.is_open()) {
         for (int i = 0 ; i < boxes.size() / num_feature ; ++i) {
+            /** only keep cars */
+            if(cls[i] != 0)
+            {
+              continue;
+            }
             for (int j = 0 ; j < num_feature ; ++j) {
                 ofFile << boxes.at(i * num_feature + j) << " ";
             }
@@ -59,6 +141,12 @@ void Boxes2Txt( std::vector<float> boxes , string file_name , int num_feature = 
 };
 
 TEST(PointPillars, __build_model__) {
+
+  // NusPCD2Txt(
+  //   "/home/hugoliu/github/nvidia/lidar/PointPillars_MultiHead_40FPS/test/testdata/n015-2018-11-21-19-38-26+0800__LIDAR_TOP__1542801007446751.pcd.bin",
+  //   "/home/hugoliu/github/nvidia/lidar/PointPillars_MultiHead_40FPS/test/testdata/n015-2018-11-21-19-38-26+0800__LIDAR_TOP__1542801007446751.pcd.txt"
+  // );
+  // abort();
 
   const std::string DB_CONF = "../bootstrap.yaml";
   YAML::Node config = YAML::LoadFile(DB_CONF);
@@ -82,13 +170,14 @@ TEST(PointPillars, __build_model__) {
     pp_config
   );
   std::string file_name = config["InputFile"].as<std::string>();
+  LOGPF("read points from: %s", file_name.c_str());
   float* points_array;
   int in_num_points;
   // in_num_points = Txt2Arrary(points_array, file_name, 5);
   in_num_points = Txt2Arrary(points_array, file_name, 4);
   LOGPF("in_num_points: %d", in_num_points);
 
-  for (int i = 0 ; i < 10 ; i++)
+  for (int i = 0 ; i < 1 ; i++)
   {
     std::vector<float> out_detections;
     std::vector<int> out_labels;
@@ -101,7 +190,7 @@ TEST(PointPillars, __build_model__) {
     int num_objects = out_detections.size() / BoxFeature;
 
     std::string boxes_file_name = config["OutputFile"].as<std::string>();
-    Boxes2Txt(out_detections , boxes_file_name );
+    Boxes2Txt(out_detections, out_labels, boxes_file_name );
 
     LOGPF("test [%d], num_objects: %d", i, num_objects);
     for(int j=0; j<num_objects; j++)
