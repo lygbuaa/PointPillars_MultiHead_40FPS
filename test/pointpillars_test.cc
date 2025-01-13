@@ -48,7 +48,7 @@ bool NusPCD2Txt(const std::string& pcd_file_path, const std::string& txt_file_pa
     return true;
 }
 
-int Txt2ArrayV2(float* &points_array , string file_name , int num_feature = 4)
+int Txt2ArrayV2(float** points_array_ptr , string file_name , int num_feature = 4)
 {
   ifstream InFile;
   InFile.open(file_name.data());
@@ -56,11 +56,11 @@ int Txt2ArrayV2(float* &points_array , string file_name , int num_feature = 4)
   std::vector<float> temp_points;
 
   std::string line;
-  uint32_t counter = 0;
+  size_t points_counter = 0;
   while(std::getline(InFile, line))
   {
-    counter ++;
-    // LOGPF("line[%d]: %s", counter, line.c_str());
+    points_counter ++;
+    // LOGPF("line[%d]: %s", points_counter, line.c_str());
     float x, y, z, i, r;
     sscanf(line.c_str(), "%e %e %e %e %e\n", &x, &y, &z, &i, &r);
     // LOGPF("point[%d] x=%f, y=%f, z=%f, i=%f, r=%f", x, y, z, i, r);
@@ -68,23 +68,29 @@ int Txt2ArrayV2(float* &points_array , string file_name , int num_feature = 4)
     temp_points.push_back(y);
     temp_points.push_back(z);
     temp_points.push_back(i);
-    temp_points.push_back(r);
+    // temp_points.push_back(r);
+    /** r stands for scan-round, 
+     *  in 10-sweeps file, it varies from 0.0, 0.05, 0.10, ... 0.45,
+     *  so in single sweep file, let r=0 works fine. */
+    temp_points.push_back(0.0f); 
   }
 
   InFile.close();
   LOGPF("temp_points size: %ld", temp_points.size());
-  size_t points_array_size = counter * sizeof(float) * num_feature;
+  size_t points_array_size = points_counter * num_feature;
 
-  points_array = new float[points_array_size];
-  for (int i = 0 ; i < temp_points.size() ; ++i) {
-    counter += 1;
-    if(counter % 5 == 0)
-    {
-      continue;
-    }
-    points_array[i] = temp_points[i];
+  *points_array_ptr = new float[points_array_size];
+  float* points_array = *points_array_ptr;
+  for(int i=0; i<points_counter; ++i)
+  {
+      for(int j=0; j<num_feature; j++)
+      {
+          size_t out_idx = i*num_feature + j;
+          size_t tmp_idx = i*5 + j;
+          points_array[out_idx] = temp_points[tmp_idx];
+      }
   }
-  return temp_points.size() / num_feature;
+  return points_counter;
 }
 
 int Txt2Arrary( float* &points_array , string file_name , int num_feature = 4)
@@ -107,10 +113,10 @@ int Txt2Arrary( float* &points_array , string file_name , int num_feature = 4)
   points_array = new float[temp_points.size()];
   for (int i = 0 ; i < temp_points.size() ; ++i) {
     counter += 1;
-    if(counter % 5 == 0)
-    {
-      continue;
-    }
+    // if(counter % 5 == 0)
+    // {
+    //   continue;
+    // }
     points_array[i] = temp_points[i];
   }
 
@@ -124,14 +130,20 @@ void Boxes2Txt( std::vector<float> boxes , std::vector<int> cls, string file_nam
     ofstream ofFile;
     ofFile.open(file_name , std::ios::out );  
     if (ofFile.is_open()) {
-        for (int i = 0 ; i < boxes.size() / num_feature ; ++i) {
+        for (int i = 0 ; i < boxes.size() / num_feature ; ++i) 
+        {
             /** only keep cars */
-            if(cls[i] != 0)
+            // if(cls[i] != 0)
+            // {
+            //   continue;
+            // }
+            for (int j = 0 ; j < num_feature ; ++j) 
             {
-              continue;
-            }
-            for (int j = 0 ; j < num_feature ; ++j) {
-                ofFile << boxes.at(i * num_feature + j) << " ";
+              // if(j%(num_feature-1) == 0)
+              // {
+              //   boxes.at(i * num_feature + j) += 1.571;
+              // }
+              ofFile << boxes.at(i*num_feature+j) << " ";
             }
             ofFile << "\n";
         }
@@ -174,7 +186,8 @@ TEST(PointPillars, __build_model__) {
   float* points_array;
   int in_num_points;
   // in_num_points = Txt2Arrary(points_array, file_name, 5);
-  in_num_points = Txt2Arrary(points_array, file_name, 4);
+  /** input-feature: x,y,z,i,r  , r is indispensable, let r=0 just works fine */
+  in_num_points = Txt2ArrayV2(&points_array, file_name, 5);
   LOGPF("in_num_points: %d", in_num_points);
 
   for (int i = 0 ; i < 1 ; i++)
@@ -190,9 +203,9 @@ TEST(PointPillars, __build_model__) {
     int num_objects = out_detections.size() / BoxFeature;
 
     std::string boxes_file_name = config["OutputFile"].as<std::string>();
-    Boxes2Txt(out_detections, out_labels, boxes_file_name );
+    Boxes2Txt(out_detections, out_labels, boxes_file_name);
 
-    LOGPF("test [%d], num_objects: %d", i, num_objects);
+    LOGPF("test [%d], num_objects: %d, boxes_file_name: %s", i, num_objects, boxes_file_name.c_str());
     for(int j=0; j<num_objects; j++)
     {
       LOGPF("obj[%d] wlh(%.2f, %.2f, %.2f), label: %d, score: %.2f", \

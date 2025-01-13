@@ -1,5 +1,5 @@
 BoxFeature: 7
-ScoreThreshold: 0.1
+ScoreThreshold: 0.2
 NmsOverlapThreshold: 0.2
 UseOnnx: false 
 
@@ -11,5 +11,5 @@ BackboneTrt: ../model/cbgs_pp_multihead_backbone.trt
 
 ModelConfig: ../pointpillars/cfgs/cbgs_pp_multihead.yaml
 
-InputFile: ../test/testdata/nuscenes_10sweeps_points.txt
-OutputFile: ../test/testdata/boxes.txt
+InputFile: ../test/testdata/n015-2018-11-21-19-38-26+0800__LIDAR_TOP__1542801007446751.pcd.txt
+OutputFile: ../test/testdata/boxes_n015.txt

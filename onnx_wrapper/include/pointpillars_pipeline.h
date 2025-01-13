@@ -15,6 +15,7 @@ public:
     {
     }
 
+    size_t LoadPCDFile(const char* pcd_txt_path, const int num_feature=4);
     bool Init(const char* pfe_model_path, const char* backbone_model_path);
     bool Stop();
 
@@ -23,6 +24,7 @@ public:
 private:
     std::shared_ptr<OrtPointPillarsPfeInfer> ort_pfe_model_;
     std::shared_ptr<OrtPointPillarsBackboneInfer> ort_backbone_model_;
+    std::shared_ptr<float> pcd_array_;
 
 };
 

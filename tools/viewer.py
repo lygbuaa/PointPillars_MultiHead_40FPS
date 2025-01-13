@@ -26,11 +26,13 @@ def dataloader(cloud_path , boxes_path):
 
 if __name__ == "__main__":
     import yaml
-    # with open("../bootstrap.yaml") as f:
-    #     config = yaml.load(f, Loader=yaml.FullLoader)
+    with open("../bootstrap.yaml") as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
     # input_pcd_file = "/home/hugoliu/github/nvidia/lidar/CenterPoint/tensorrt/data/centerpoint/points/0a0d6b8c2e884134a3b48df43d54c36a.bin"
-    input_pcd_file = "/home/hugoliu/github/nvidia/lidar/PointPillars_MultiHead_40FPS/test/testdata/nuscenes_10sweeps_points.txt"
+    # input_pcd_file = "/home/hugoliu/github/nvidia/lidar/PointPillars_MultiHead_40FPS/test/testdata/n015-2018-11-21-19-38-26+0800__LIDAR_TOP__1542801007446751.pcd.txt"
     # output_box_file = "/home/hugoliu/github/nvidia/lidar/CenterPoint/tensorrt/data/centerpoint/fp16_3.txt"
-    output_box_file = "/home/hugoliu/github/nvidia/lidar/PointPillars_MultiHead_40FPS/test/testdata/demo_boxes.txt"
+    # output_box_file = "/home/hugoliu/github/nvidia/lidar/PointPillars_MultiHead_40FPS/test/testdata/boxes_n015.txt"
+    input_pcd_file = config['InputFile']
+    output_box_file = config['OutputFile']
     cloud ,boxes = dataloader(input_pcd_file, output_box_file)
     draw_clouds_with_boxes(cloud ,boxes)
