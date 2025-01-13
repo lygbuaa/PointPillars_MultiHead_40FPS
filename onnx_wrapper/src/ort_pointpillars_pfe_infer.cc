@@ -23,7 +23,7 @@ void OrtPointPillarsPfeInfer::RunPointpillarsPfeModel(POINTPILLARS_PFE_MODEL_INP
                     memory_info, reinterpret_cast<void*>(input.pillar_features.data()), sizeof(float)*input.pillar_features.size(),
                     input_node_dims[0].data(), input_node_dims[0].size(), input_types[0], &input_tensors[0]));
     g_ort_->ReleaseMemoryInfo(memory_info);
-    LOGPF("CreateTensorWithDataAsOrtValue for pillar_features: %ld", sizeof(float)*input.pillar_features.size());
+    RLOGI("CreateTensorWithDataAsOrtValue for pillar_features: %ld", sizeof(float)*input.pillar_features.size());
 
     /* do inference */
     CheckStatus(g_ort_->Run(g_model_s_.sess, nullptr, input_node_names.data(), (const OrtValue* const*)input_tensors.data(),
@@ -31,7 +31,7 @@ void OrtPointPillarsPfeInfer::RunPointpillarsPfeModel(POINTPILLARS_PFE_MODEL_INP
 
     /* postprocess */
     // assert (output_node_names.size() == 1);
-    // LOGPF("retrieve output[0]: %s\n", output_node_names[0]);
+    // RLOGI("retrieve output[0]: %s\n", output_node_names[0]);
     float* learned_features;
     CheckStatus(g_ort_->GetTensorMutableData(output_tensors[0], reinterpret_cast<void**>(&learned_features)));
     size_t learned_features_size = 1;
@@ -40,12 +40,12 @@ void OrtPointPillarsPfeInfer::RunPointpillarsPfeModel(POINTPILLARS_PFE_MODEL_INP
         learned_features_size *= output_node_dims[0][k];
     }
     output.learned_features.assign(learned_features, learned_features+learned_features_size);
-    LOGPF("learned_features_size: %ld", learned_features_size);
+    RLOGI("learned_features_size: %ld", learned_features_size);
 }
 
 void OrtPointPillarsPfeInfer::TestPointpillarsPfeModel()
 {
-    LOGPF("TestPointpillarsPfeModel\n");
+    RLOGI("TestPointpillarsPfeModel\n");
     POINTPILLARS_PFE_MODEL_INPUT_t input;
     POINTPILLARS_PFE_MODEL_OUTPUT_t output;
 

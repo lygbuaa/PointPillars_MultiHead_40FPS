@@ -49,6 +49,8 @@
 // headers in local files
 #include "common.h"
 #include "preprocess.h"
+#include "logging_utils.h"
+#include "crc_checker.h"
 
 __global__ void make_pillar_histo_kernel(
     const float* dev_points, float* dev_pillar_point_feature_in_coors,
@@ -331,8 +333,12 @@ PreprocessPointsCuda::PreprocessPointsCuda(
     
     GPU_CHECK(cudaMalloc(reinterpret_cast<void**>(&dev_pillar_point_feature_in_coors_),
         grid_y_size_ * grid_x_size_ * max_num_points_per_pillar_ *  num_point_feature_ * sizeof(float)));
+    dev_pillar_point_feature_in_coors_cpu_ = new float[grid_y_size_ * grid_x_size_ * max_num_points_per_pillar_ *  num_point_feature_ * sizeof(float)];
+
     GPU_CHECK(cudaMalloc(reinterpret_cast<void**>(&dev_pillar_count_histo_),
         grid_y_size_ * grid_x_size_ * sizeof(int)));
+    dev_pillar_count_histo_cpu_ = new int[grid_y_size_ * grid_x_size_ * sizeof(int)];
+
     GPU_CHECK(cudaMalloc(reinterpret_cast<void**>(&dev_counter_), sizeof(int)));
     GPU_CHECK(cudaMalloc(reinterpret_cast<void**>(&dev_pillar_count_), sizeof(int)));    
     GPU_CHECK(cudaMalloc(reinterpret_cast<void**>(&dev_points_mean_), max_num_pillars_ * 3 *sizeof(float)));  
@@ -340,7 +346,9 @@ PreprocessPointsCuda::PreprocessPointsCuda(
 
 PreprocessPointsCuda::~PreprocessPointsCuda() {
     GPU_CHECK(cudaFree(dev_pillar_point_feature_in_coors_));
+    delete[] dev_pillar_point_feature_in_coors_cpu_;
     GPU_CHECK(cudaFree(dev_pillar_count_histo_));
+    delete[] dev_pillar_count_histo_cpu_;
     GPU_CHECK(cudaFree(dev_counter_));
     GPU_CHECK(cudaFree(dev_pillar_count_));
     GPU_CHECK(cudaFree(dev_points_mean_));
@@ -355,7 +363,9 @@ void PreprocessPointsCuda::DoPreprocessPointsCuda(
     int* dev_sparse_pillar_map, int* host_pillar_count , float* dev_pfe_gather_feature) {
     // initialize paraments
     GPU_CHECK(cudaMemset(dev_pillar_point_feature_in_coors_, 0 , grid_y_size_ * grid_x_size_ * max_num_points_per_pillar_ *  num_point_feature_ * sizeof(float)));
+    memset(dev_pillar_point_feature_in_coors_cpu_, 0, grid_y_size_ * grid_x_size_ * max_num_points_per_pillar_ * num_point_feature_ * sizeof(float));
     GPU_CHECK(cudaMemset(dev_pillar_count_histo_, 0 , grid_y_size_ * grid_x_size_ * sizeof(int)));
+    memset(dev_pillar_count_histo_cpu_, 0, grid_y_size_ * grid_x_size_ * sizeof(int));
     GPU_CHECK(cudaMemset(dev_counter_, 0, sizeof(int)));
     GPU_CHECK(cudaMemset(dev_pillar_count_, 0, sizeof(int)));
     GPU_CHECK(cudaMemset(dev_points_mean_, 0,  max_num_pillars_ * 3 * sizeof(float)));
@@ -365,12 +375,49 @@ void PreprocessPointsCuda::DoPreprocessPointsCuda(
         in_num_points, max_num_points_per_pillar_, grid_x_size_, grid_y_size_,
         grid_z_size_, min_x_range_, min_y_range_, min_z_range_, pillar_x_size_,
         pillar_y_size_, pillar_z_size_, num_point_feature_);
-    
+
+    LOGPF("grid_x_size_: %d, grid_y_size_: %d, max_num_points_per_pillar_: %d, num_point_feature_: %d, dev_pillar_point_feature_in_coors_: %ld", \
+      grid_x_size_, grid_y_size_, max_num_points_per_pillar_, num_point_feature_, grid_y_size_ * grid_x_size_ * max_num_points_per_pillar_ * num_point_feature_ * sizeof(float));
+    GPU_CHECK(cudaMemcpy(dev_pillar_point_feature_in_coors_cpu_, dev_pillar_point_feature_in_coors_, grid_y_size_ * grid_x_size_ * max_num_points_per_pillar_ * num_point_feature_ * sizeof(float),
+        cudaMemcpyDeviceToHost));
+    GPU_CHECK(cudaMemcpy(dev_pillar_count_histo_cpu_, dev_pillar_count_histo_, grid_y_size_ * grid_x_size_ * sizeof(int),
+        cudaMemcpyDeviceToHost));
+
+    int32_t dev_pillar_point_feature_in_coors_crc = gfCalcBytesCRC(dev_pillar_point_feature_in_coors_cpu_, grid_y_size_ * grid_x_size_ * max_num_points_per_pillar_ * num_point_feature_ * sizeof(float));
+    int32_t dev_pillar_count_histo_crc = gfCalcBytesCRC(dev_pillar_count_histo_cpu_, grid_y_size_ * grid_x_size_ * sizeof(int));
+    int32_t dev_pillar_point_feature_in_coors_sum = gfCalcFloatsSUM(dev_pillar_point_feature_in_coors_cpu_, grid_y_size_ * grid_x_size_ * max_num_points_per_pillar_ * num_point_feature_, -3);
+
+    LOGPF("[crc][make_pillar_histo_kernel] dev_pillar_point_feature_in_coors_fp32 = 0x%x, , dev_pillar_point_feature_in_coors_u32 = 0x%x, dev_pillar_count_histo_fp32 = 0x%x", \
+      dev_pillar_point_feature_in_coors_crc, dev_pillar_point_feature_in_coors_sum, dev_pillar_count_histo_crc);
+
     make_pillar_index_kernel<<<grid_x_size_, grid_y_size_>>>(
         dev_pillar_count_histo_, dev_counter_, dev_pillar_count_, dev_x_coors,
         dev_y_coors, dev_num_points_per_pillar, dev_sparse_pillar_map,
         max_num_pillars_, max_num_points_per_pillar_, grid_x_size_,
-        num_inds_for_scan_);  
+        num_inds_for_scan_);
+    int dev_counter_cpu = 0;
+    int dev_pillar_count_cpu = 0;
+    GPU_CHECK(cudaMemcpy(&dev_counter_cpu, dev_counter_, sizeof(int), cudaMemcpyDeviceToHost));
+    GPU_CHECK(cudaMemcpy(&dev_pillar_count_cpu, dev_pillar_count_, sizeof(int), cudaMemcpyDeviceToHost));
+    LOGPF("dev_counter_: %d, dev_pillar_count_: %d", dev_counter_cpu, dev_pillar_count_cpu);
+    int* dev_x_coors_cpu = new int[30000];
+    int* dev_y_coors_cpu = new int[30000];
+    float* dev_num_points_per_pillar_cpu = new float[30000];
+    int* dev_sparse_pillar_map_cpu = new int[1024*1024];
+    GPU_CHECK(cudaMemcpy(dev_x_coors_cpu, dev_x_coors, 30000*sizeof(int), cudaMemcpyDeviceToHost));
+    GPU_CHECK(cudaMemcpy(dev_y_coors_cpu, dev_y_coors, 30000*sizeof(int), cudaMemcpyDeviceToHost));
+    GPU_CHECK(cudaMemcpy(dev_num_points_per_pillar_cpu, dev_num_points_per_pillar, 30000*sizeof(float), cudaMemcpyDeviceToHost));
+    GPU_CHECK(cudaMemcpy(dev_sparse_pillar_map_cpu, dev_sparse_pillar_map, 1024*1024*sizeof(int), cudaMemcpyDeviceToHost));
+    int32_t dev_x_coors_crc = gfCalcBytesCRC(dev_x_coors_cpu, 30000*sizeof(int));
+    int32_t dev_y_coors_crc = gfCalcBytesCRC(dev_y_coors_cpu, 30000*sizeof(int));
+    int32_t dev_num_points_per_pillar_crc = gfCalcFloatsCRC(dev_num_points_per_pillar_cpu, 30000, 0);
+    int32_t dev_sparse_pillar_map_crc = gfCalcBytesCRC(dev_sparse_pillar_map_cpu, 1024*1024*sizeof(int));
+    LOGPF("dev_x_coors_crc: 0x%x, dev_y_coors_crc: 0x%x, dev_num_points_per_pillar_crc: 0x%x, dev_sparse_pillar_map_crc: 0x%x",  \
+           dev_x_coors_crc, dev_y_coors_crc, dev_num_points_per_pillar_crc, dev_sparse_pillar_map_crc);
+    delete[] dev_x_coors_cpu;
+    delete[] dev_y_coors_cpu;
+    delete[] dev_num_points_per_pillar_cpu;
+    delete[] dev_sparse_pillar_map_cpu;
 
     GPU_CHECK(cudaMemcpy(host_pillar_count, dev_pillar_count_, 1 * sizeof(int),
         cudaMemcpyDeviceToHost));
@@ -378,13 +425,31 @@ void PreprocessPointsCuda::DoPreprocessPointsCuda(
         dev_pillar_point_feature_in_coors_, dev_pillar_point_feature,
         dev_pillar_coors, dev_x_coors, dev_y_coors, dev_num_points_per_pillar,
         max_num_points_per_pillar_, num_point_feature_, grid_x_size_);
-    
 
-    dim3 mean_block(max_num_points_per_pillar_,3); //(32,3)
+    float* dev_pillar_point_feature_cpu = new float[30000*20*5];
+    float* dev_pillar_coors_cpu = new float[30000*4];
+    memset(dev_pillar_point_feature_cpu, 0, 30000*20*5*sizeof(float));
+    memset(dev_pillar_coors_cpu, 0, 30000*4*sizeof(float));
+    GPU_CHECK(cudaMemcpy(dev_pillar_point_feature_cpu, dev_pillar_point_feature, 30000*20*5*sizeof(float), cudaMemcpyDeviceToHost));
+    GPU_CHECK(cudaMemcpy(dev_pillar_coors_cpu, dev_pillar_coors, 30000*4*sizeof(float), cudaMemcpyDeviceToHost));
+    int32_t dev_pillar_point_feature_crc = gfCalcFloatsSUM(dev_pillar_point_feature_cpu, 30000*20*5, 0);
+    int32_t dev_pillar_coors_crc = gfCalcFloatsSUM(dev_pillar_coors_cpu, 30000*4, 0);
+    LOGPF("dev_pillar_point_feature_crc: 0x%x, dev_pillar_coors_crc: 0x%x", dev_pillar_point_feature_crc, dev_pillar_coors_crc);
+    delete[] dev_pillar_point_feature_cpu;
+    delete[] dev_pillar_coors_cpu;
+
+    dim3 mean_block(max_num_points_per_pillar_,3); //(20, 3)
 
     pillar_mean_kernel<<<host_pillar_count[0],mean_block,64 * 3 *sizeof(float)>>>(
       dev_points_mean_  ,num_point_feature_, dev_pillar_point_feature, dev_num_points_per_pillar, 
         max_num_pillars_ , max_num_points_per_pillar_);
+
+    float* dev_points_mean_cpu = new float[max_num_pillars_ * 3];
+    memset(dev_points_mean_cpu, 0, max_num_pillars_*3*sizeof(float));
+    GPU_CHECK(cudaMemcpy(dev_points_mean_cpu, dev_points_mean_, max_num_pillars_*3*sizeof(float), cudaMemcpyDeviceToHost));
+    int32_t dev_points_mean_crc = gfCalcFloatsSUM(dev_points_mean_cpu, max_num_pillars_*3, 0);
+    LOGPF("dev_points_mean_crc: 0x%x", dev_points_mean_crc);
+    delete[] dev_points_mean_cpu;
 
     // dim3 mean_block(10,3); // Unrolling the Last Warp
     // make_pillar_mean_kernel<<<host_pillar_count[0], mean_block , 32 * 3 *sizeof(float)>>>(
@@ -398,6 +463,13 @@ void PreprocessPointsCuda::DoPreprocessPointsCuda(
       dev_pillar_point_feature, dev_num_points_per_pillar, dev_pillar_coors,
       dev_points_mean_,
       dev_pfe_gather_feature);
+
+    float* dev_pfe_gather_feature_cpu = new float[max_num_pillars_ * max_num_points_per_pillar_ * 11];
+    memset(dev_pfe_gather_feature_cpu, 0, max_num_pillars_ * max_num_points_per_pillar_ * 11 * sizeof(float));
+    GPU_CHECK(cudaMemcpy(dev_pfe_gather_feature_cpu, dev_pfe_gather_feature, max_num_pillars_ * max_num_points_per_pillar_ * 11 * sizeof(float), cudaMemcpyDeviceToHost));
+    int32_t dev_pfe_gather_feature_crc = gfCalcFloatsSUM(dev_pfe_gather_feature_cpu, max_num_pillars_ * max_num_points_per_pillar_ * 11, 0);
+    LOGPF("dev_pfe_gather_feature_crc: 0x%x", dev_pfe_gather_feature_crc);
+    delete[] dev_pfe_gather_feature_cpu;
 
     // DEVICE_SAVE<float>(dev_pillar_point_feature , \
     //     max_num_pillars_ * max_num_points_per_pillar_ * num_point_feature_ , "dev_pillar_point_feature");

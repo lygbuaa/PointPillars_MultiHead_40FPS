@@ -67,7 +67,9 @@ class PreprocessPointsCuda {
     // end initializer list
 
     float* dev_pillar_point_feature_in_coors_;
+    float* dev_pillar_point_feature_in_coors_cpu_;
     int* dev_pillar_count_histo_;
+    int* dev_pillar_count_histo_cpu_;
 
     int* dev_counter_;
     int* dev_pillar_count_;

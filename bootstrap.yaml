@@ -3,13 +3,13 @@ ScoreThreshold: 0.2
 NmsOverlapThreshold: 0.2
 UseOnnx: false 
 
-PfeOnnx: ../model/cbgs_pp_multihead_pfe.onnx
-BackboneOnnx: ../model/cbgs_pp_multihead_backbone.onnx
+PfeOnnx: model/cbgs_pp_multihead_pfe.onnx
+BackboneOnnx: model/cbgs_pp_multihead_backbone.onnx
 
-PfeTrt: ../model/cbgs_pp_multihead_pfe.trt
-BackboneTrt: ../model/cbgs_pp_multihead_backbone.trt
+PfeTrt: model/cbgs_pp_multihead_pfe.trt
+BackboneTrt: model/cbgs_pp_multihead_backbone.trt
 
-ModelConfig: ../pointpillars/cfgs/cbgs_pp_multihead.yaml
+ModelConfig: pointpillars/cfgs/cbgs_pp_multihead.yaml
 
-InputFile: ../test/testdata/n015-2018-11-21-19-38-26+0800__LIDAR_TOP__1542801007446751.pcd.txt
-OutputFile: ../test/testdata/boxes_n015.txt
+InputFile: test/testdata/n015-2018-11-21-19-38-26+0800__LIDAR_TOP__1542801007446751.pcd.txt
+OutputFile: test/testdata/boxes_n015.txt

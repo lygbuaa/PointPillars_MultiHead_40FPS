@@ -6,7 +6,7 @@ bool OrtModelInferBase::LoadONNXModel(const std::string& model_path)
     try{
         LoadModel(model_path, g_model_s_);
     }catch(Ort::Exception& e){
-        LOGPF("ort exception: %s\n", e.what());
+        RLOGE("ort exception: %s\n", e.what());
         return false;
     }
     return true;
@@ -14,18 +14,18 @@ bool OrtModelInferBase::LoadONNXModel(const std::string& model_path)
 
 void OrtModelInferBase::LoadModel(const std::string& model_path, ORT_S_t& model_s)
 {
-    LOGPF("loading onnx model: %s\n", model_path.c_str());
+    RLOGI("loading onnx model: %s\n", model_path.c_str());
 
     CheckStatus(g_ort_->CreateSession(env_, model_path.c_str(), session_options_, &model_s.sess));
-    LOGPF("CreateSession sucess.");
+    RLOGI("CreateSession sucess.");
 
     OrtAllocator* allocator;
     CheckStatus(g_ort_->GetAllocatorWithDefaultOptions(&allocator));
-    LOGPF("GetAllocatorWithDefaultOptions sucess.");
+    RLOGI("GetAllocatorWithDefaultOptions sucess.");
 
     size_t num_input_nodes;
     CheckStatus(g_ort_->SessionGetInputCount(model_s.sess, &num_input_nodes));
-    LOGPF("SessionGetInputCount sucess: %ld", num_input_nodes);
+    RLOGI("SessionGetInputCount sucess: %ld", num_input_nodes);
 
     std::vector<const char*>& input_node_names = model_s.input_node_names;
     std::vector<std::vector<int64_t>>& input_node_dims = model_s.input_node_dims;
@@ -43,7 +43,7 @@ void OrtModelInferBase::LoadModel(const std::string& model_path, ORT_S_t& model_
         char* input_name;
         CheckStatus(g_ort_->SessionGetInputName(model_s.sess, i, allocator, &input_name));
         input_node_names[i] = input_name;
-        LOGPF("input_node_names[%d]:  %s", i, input_name);
+        RLOGI("input_node_names[%d]:  %s", i, input_name);
 
         // Get input node types
         OrtTypeInfo* typeinfo;
@@ -53,18 +53,18 @@ void OrtModelInferBase::LoadModel(const std::string& model_path, ORT_S_t& model_
         ONNXTensorElementDataType type;
         CheckStatus(g_ort_->GetTensorElementType(tensor_info, &type));
         input_types[i] = type;
-        LOGPF("input_types[%d]: %d", i, (int)(type));
+        RLOGI("input_types[%d]: %d", i, (int)(type));
 
         // Get input shapes/dims
         size_t num_dims;
         CheckStatus(g_ort_->GetDimensionsCount(tensor_info, &num_dims));
-        LOGPF("GetDimensionsCount[%d]: %d", i, (int)(num_dims));
+        RLOGI("GetDimensionsCount[%d]: %d", i, (int)(num_dims));
 
         input_node_dims[i].resize(num_dims);
         CheckStatus(g_ort_->GetDimensions(tensor_info, input_node_dims[i].data(), num_dims));
         for(size_t j=0; j<num_dims; j++)
         {
-            LOGPF("GetDimensions[%d][%d]: %ld", i, j, input_node_dims[i][j]);
+            RLOGI("GetDimensions[%d][%d]: %ld", i, j, input_node_dims[i][j]);
         }
 
         // size_t tensor_size;
@@ -79,7 +79,7 @@ void OrtModelInferBase::LoadModel(const std::string& model_path, ORT_S_t& model_
         dimstr += ")";
 
         /* print input tensor information */
-        LOGPF("input[%ld]-%s, type: %d, dims: %s\n", i, input_name, type, dimstr.c_str());
+        RLOGI("input[%ld]-%s, type: %d, dims: %s\n", i, input_name, type, dimstr.c_str());
 
         if (typeinfo) g_ort_->ReleaseTypeInfo(typeinfo);
     }
@@ -91,7 +91,7 @@ void OrtModelInferBase::LoadModel(const std::string& model_path, ORT_S_t& model_
     std::vector<OrtValue*>& output_tensors = model_s.output_tensors;
 
     CheckStatus(g_ort_->SessionGetOutputCount(model_s.sess, &num_output_nodes));
-    LOGPF("num_output_nodes: %ld\n", num_output_nodes);
+    RLOGI("num_output_nodes: %ld\n", num_output_nodes);
     output_node_names.resize(num_output_nodes);
     output_node_dims.resize(num_output_nodes);
     output_tensors.resize(num_output_nodes);
@@ -133,7 +133,7 @@ void OrtModelInferBase::LoadModel(const std::string& model_path, ORT_S_t& model_
         }
         dimstr += ")";
         /* print output tensor information */
-        LOGPF("output[%ld]-%s, type: %d, dims: %s\n", i, output_name, type, dimstr.c_str());
+        RLOGI("output[%ld]-%s, type: %d, dims: %s\n", i, output_name, type, dimstr.c_str());
 
         if (typeinfo) g_ort_->ReleaseTypeInfo(typeinfo);
     }
@@ -154,21 +154,21 @@ bool OrtModelInferBase::InitOrt(const char* logid)
 {
     g_ort_base_ = OrtGetApiBase();
     if (!g_ort_base_){
-        LOGPF("Failed to OrtGetApiBase.\n");
+        RLOGE("Failed to OrtGetApiBase.\n");
         return false;
     }
 
-    LOGPF("ort version: %s\n", g_ort_base_->GetVersionString());
+    RLOGI("ort version: %s\n", g_ort_base_->GetVersionString());
 
     g_ort_ = g_ort_base_->GetApi(ORT_API_VERSION);
     if (!g_ort_) {
-        LOGPF("Failed to init ONNX Runtime engine.\n");
+        RLOGE("Failed to init ONNX Runtime engine.\n");
         return false;
     }
 
     CheckStatus(g_ort_->CreateEnv(ORT_LOGGING_LEVEL_INFO, logid, &env_));
     if (!env_) {
-        LOGPF("Failed to CreateEnv.\n");
+        RLOGE("Failed to CreateEnv.\n");
         return false;
     }
 
@@ -199,13 +199,13 @@ void OrtModelInferBase::VerifyInputOutputCount(OrtSession* sess)
     CheckStatus(g_ort_->SessionGetInputCount(sess, &count));
     if(count != 1)
     {
-        LOGPF("SessionGetInputCount: %ld", count);
+        RLOGE("SessionGetInputCount: %ld", count);
         abort();
     }
     CheckStatus(g_ort_->SessionGetOutputCount(sess, &count));
     if(count != 1)
     {
-        LOGPF("SessionGetInputCount: %ld", count);
+        RLOGE("SessionGetInputCount: %ld", count);
         abort();
     }
 }

@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.10.0)
 project(onnx_wrapper_demo)
 set(MODULE_BIN_NAME onnx_wrapper_demo_bin)
+set(MODULE_TEST_NAME onnx_wrapper_demo_test)
 
 add_compile_options("-Wl,--no-undefined")
 set(CMAKE_C_FLAGS "-fPIC -Wall -D_GNU_SOURCE -rdynamic -export-dynamic -Werror=return-type")
@@ -13,6 +14,7 @@ message(STATUS "CMAKE_CURRENT_SOURCE_DIR: ${CMAKE_CURRENT_SOURCE_DIR}")
 set(USE_ORT_VERSION 1.16.3)
 
 set(COMMON_INC_PATH ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set(OPS_INC_PATH ${CMAKE_CURRENT_SOURCE_DIR}/pointpillars_ops)
 set(ORT_INC_PATH ${CMAKE_CURRENT_SOURCE_DIR}/third_party/onnxruntime/${USE_ORT_VERSION}/include)
 set(ORT_LIB_BASE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/third_party/onnxruntime/${USE_ORT_VERSION}/lib)
 set(GTEST_INC_PATH ${CMAKE_CURRENT_SOURCE_DIR}/third_party/gtest/include)
@@ -20,16 +22,21 @@ set(GTEST_LIB_BASE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/third_party/gtest/lib)
 
 include_directories(
     ${ORT_INC_PATH}
+    ${GTEST_INC_PATH}
     ${COMMON_INC_PATH}
+    ${OPS_INC_PATH}
 )
+
+file(GLOB MODULE_SRC_FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/pointpillars_ops/*.cc
+)
+message(STATUS "MODULE_SRC_FILES: ${MODULE_SRC_FILES}")
 
 add_executable(
   ${MODULE_BIN_NAME}
-  src/main.cc
-  src/ort_model_infer_base.cc
-  src/ort_pointpillars_pfe_infer.cc
-  src/ort_pointpillars_backbone_infer.cc
-  src/pointpillars_pipeline.cc
+  ${MODULE_SRC_FILES}
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp
 )
 
 EXECUTE_PROCESS(COMMAND uname -m COMMAND tr -d '\n' OUTPUT_VARIABLE ARCHITECTURE)
@@ -50,26 +57,38 @@ MESSAGE(STATUS "GTEST_LIB_PATH: " ${GTEST_LIB_PATH})
 target_link_libraries(
     ${MODULE_BIN_NAME}
     ${ORT_LIB_PATH}
-    # ${GTEST_LIB_PATH}
+    yaml-cpp
     -ldl
     -lrt
     -pthread
 )
 
-option(BUILD_EXAMPLE_WITH_PCL "build sensor_client_example with libpcl-dev" OFF)
+option(BUILD_TEST "BUILD TESTCASES" ON)
+if(BUILD_TEST)
+    message(STATUS "BUILD_TEST: ${BUILD_TEST}")
+    file(GLOB MODULE_TEST_FILES
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/*.cc
+    )
+    message(STATUS "MODULE_TEST_FILES: ${MODULE_TEST_FILES}")
+    add_executable(
+      ${MODULE_TEST_NAME}
+      ${MODULE_SRC_FILES}
+      ${MODULE_TEST_FILES}
+    )
 
-if(BUILD_EXAMPLE_WITH_PCL)
-  find_package(PCL REQUIRED COMPONENTS common filters)
-  message(STATUS "FIND PCL_LIBRARY_DIRS: ${PCL_LIBRARY_DIRS}")
-  add_definitions(-DENABLE_PCL_IN_LIDAR_PIPELINE=1)
+    target_link_libraries(
+      ${MODULE_TEST_NAME}
+      ${ORT_LIB_PATH}
+      ${GTEST_LIB_PATH}
+      yaml-cpp
+      -pthread
+      -ldl
+      -lrt
+  )
+  install (TARGETS ${MODULE_TEST_NAME} DESTINATION onnx_wrapper_demo/bin/)
 else()
-  message(STATUS "BUILD_EXAMPLE_WITH_PCL disabled: ${BUILD_EXAMPLE_WITH_PCL}")
-  add_definitions(-DENABLE_PCL_IN_LIDAR_PIPELINE=0)
+  message(STATUS "BUILD_TEST: ${BUILD_TEST}")
 endif()
-
-
-if(BUILD_EXAMPLE_WITH_PCL)
-endif(BUILD_EXAMPLE_WITH_PCL)
 
 install (TARGETS ${MODULE_BIN_NAME} DESTINATION onnx_wrapper_demo/bin/)
 install (DIRECTORY launch DESTINATION onnx_wrapper_demo)

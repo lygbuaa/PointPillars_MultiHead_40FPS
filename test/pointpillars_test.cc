@@ -160,7 +160,7 @@ TEST(PointPillars, __build_model__) {
   // );
   // abort();
 
-  const std::string DB_CONF = "../bootstrap.yaml";
+  const std::string DB_CONF = "bootstrap.yaml";
   YAML::Node config = YAML::LoadFile(DB_CONF);
 
   std::string pfe_file,backbone_file; 

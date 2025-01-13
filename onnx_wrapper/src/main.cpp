@@ -7,9 +7,9 @@ int main(int argc, char **argv)
         LOGPF("argv[%d] = %s\n", i, argv[i]);
     }
 
-    if(argc < 2)
+    if(argc < 3)
     {
-        LOGPF("missing onnx model path.");
+        LOGPF("missing config path.");
         return -1;
     }
 
@@ -26,7 +26,7 @@ int main(int argc, char **argv)
 
     auto ppl = std::make_shared<PointPillarsPipeline>();
     ppl -> Init(argv[1], argv[2]);
-    ppl -> RunTest();
+    // ppl -> RunTest();
 
     uint32_t heartbeat = 0;
     while(!SignalHandlers::BreakByUser())

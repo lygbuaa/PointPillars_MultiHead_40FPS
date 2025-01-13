@@ -23,6 +23,7 @@ endif ()
 
 find_package(yaml-cpp REQUIRED)
 include_directories(${YAML_CPP_INCLUDE_DIRS})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/onnx_wrapper/include)
 
 find_package(Threads)
 find_package(OpenMP REQUIRED)
