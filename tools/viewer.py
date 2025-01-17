@@ -26,7 +26,7 @@ def dataloader(cloud_path , boxes_path):
 
 if __name__ == "__main__":
     import yaml
-    with open("../bootstrap.yaml") as f:
+    with open("bootstrap.yaml") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
     # input_pcd_file = "/home/hugoliu/github/nvidia/lidar/CenterPoint/tensorrt/data/centerpoint/points/0a0d6b8c2e884134a3b48df43d54c36a.bin"
     # input_pcd_file = "/home/hugoliu/github/nvidia/lidar/PointPillars_MultiHead_40FPS/test/testdata/n015-2018-11-21-19-38-26+0800__LIDAR_TOP__1542801007446751.pcd.txt"

@@ -84,7 +84,11 @@ public:
     bool Init(const char* global_config_path, const char* model_config_path);
     bool Stop();
     void RunTest();
-    bool RunPipeline();
+    bool RunPipeline(
+        std::vector<POINTPILLARS_BBOX3D_t>& bboxes,
+        const float* dev_points,
+        const int in_num_points
+    );
 
 protected:
     bool LoadModels();
@@ -103,7 +107,7 @@ protected:
     bool InferPfeOnnxModel();
     bool DoScatter();
     bool InferBackboneOnnxModel();
-    bool DoPostProc();
+    bool DoPostProc(std::vector<POINTPILLARS_BBOX3D_t>& bboxes);
 
 protected:
     std::shared_ptr<OrtPointPillarsPfeInfer> ort_pfe_model_;
@@ -115,7 +119,6 @@ protected:
     std::shared_ptr<PointpillarsOpsPreProc> preproc_op_;
     std::shared_ptr<PointpillarsOpsScatter> scatter_op_;
     std::shared_ptr<PointpillarsOpsPostProc> postproc_op_;
-    std::shared_ptr<PointpillarsOpsNMS> nms_op_;
 
     int host_pillar_count_[1];
     int* dev_x_coors_;
@@ -135,8 +138,8 @@ protected:
     float* pfe_buffers_[2];
     float* rpn_buffers_[8];
 
-    std::vector<float*> rpn_box_output_; 
-    std::vector<float*> rpn_cls_output_;
+    // std::vector<float*> rpn_box_output_; 
+    // std::vector<float*> rpn_cls_output_;
 
     float* dev_scattered_feature_;
 

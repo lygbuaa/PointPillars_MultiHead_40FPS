@@ -33,8 +33,24 @@ bool PointPillarsPipeline::Init(const char* global_config_path, const char* mode
         model_params_.kGridXSize,
         model_params_.kGridYSize
     );
-    postproc_op_ = std::make_shared<PointpillarsOpsPostProc>();
-    nms_op_ = std::make_shared<PointpillarsOpsNMS>();
+
+    const float float_min = std::numeric_limits<float>::lowest();
+    const float float_max = std::numeric_limits<float>::max();
+    postproc_op_ = std::make_shared<PointpillarsOpsPostProc>(
+        model_params_.kNumThreads,
+        float_min, 
+        float_max, 
+        model_params_.kNumClass,
+        model_params_.kNumAnchorPerCls,
+        model_params_.kMultiheadLabelMapping,
+        global_params_.ScoreThreshold,
+        global_params_.NmsOverlapThreshold,
+        model_params_.kNmsPreMaxsize, 
+        model_params_.kNmsPostMaxsize,
+        model_params_.kNumBoxCorners, 
+        model_params_.kNumInputBoxFeature,
+        model_params_.kNumOutputBoxFeature
+    );
 
     return true;
 }
@@ -70,9 +86,29 @@ void PointPillarsPipeline::RunTest()
     ort_backbone_model_->TestPointpillarsBackboneModel();
 }
 
-bool PointPillarsPipeline::RunPipeline()
+bool PointPillarsPipeline::RunPipeline(
+    std::vector<POINTPILLARS_BBOX3D_t>& bboxes,
+    const float* dev_points,
+    const int in_num_points
+)
 {
-    return true;
+    bool ret = DoPreProc(
+        dev_points,
+        in_num_points
+    );
+    if(!ret) return ret;
+
+    ret = InferPfeOnnxModel();
+    if(!ret) return ret;
+
+    ret = DoScatter();
+    if(!ret) return ret;
+
+    ret = InferBackboneOnnxModel();
+    if(!ret) return ret;
+
+    ret = DoPostProc(bboxes);
+    return ret;
 }
 
 size_t PointPillarsPipeline::LoadPCDFile(const char* pcd_txt_path, const int num_feature)
@@ -111,7 +147,8 @@ size_t PointPillarsPipeline::LoadPCDFile(const char* pcd_txt_path, const int num
     RLOGI("LoadPCDFile temp_points size: %ld", temp_points.size());
     size_t points_array_size = num_feature * points_counter;
 
-    pcd_array_ = std::shared_ptr<float>(new float[points_array_size]);
+    /** provide custom deleter for new[] array */
+    pcd_array_ = std::shared_ptr<float>(new float[points_array_size], [](float *p) { delete[] p; });
     float* const points_array = pcd_array_.get();
     for(size_t i=0; i<points_counter; ++i)
     {
@@ -241,13 +278,22 @@ bool PointPillarsPipeline::InferBackboneOnnxModel()
     input.pseudo_image.assign(dev_scattered_feature_, dev_scattered_feature_ + model_params_.kNumThreads * model_params_.kGridYSize * model_params_.kGridXSize);
     ort_backbone_model_ -> RunPointpillarsBackboneModel(input, output);
 
-    memcpy(rpn_buffers_[1], output.cls_pred_0.data(), model_params_.kNumAnchorPerCls * sizeof(float));
-    memcpy(rpn_buffers_[2], output.cls_pred_12.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
-    memcpy(rpn_buffers_[3], output.cls_pred_34.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
-    memcpy(rpn_buffers_[4], output.cls_pred_5.data(), model_params_.kNumAnchorPerCls * sizeof(float));
-    memcpy(rpn_buffers_[5], output.cls_pred_67.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
-    memcpy(rpn_buffers_[6], output.cls_pred_89.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
-    memcpy(rpn_buffers_[7], output.box_preds.data(), model_params_.kNumAnchorPerCls * model_params_.kNumClass * model_params_.kNumOutputBoxFeature * sizeof(float));
+    // memcpy(rpn_buffers_[1], output.cls_pred_0.data(), model_params_.kNumAnchorPerCls * sizeof(float));
+    // memcpy(rpn_buffers_[2], output.cls_pred_12.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
+    // memcpy(rpn_buffers_[3], output.cls_pred_34.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
+    // memcpy(rpn_buffers_[4], output.cls_pred_5.data(), model_params_.kNumAnchorPerCls * sizeof(float));
+    // memcpy(rpn_buffers_[5], output.cls_pred_67.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
+    // memcpy(rpn_buffers_[6], output.cls_pred_89.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
+    // memcpy(rpn_buffers_[7], output.box_preds.data(), model_params_.kNumAnchorPerCls * model_params_.kNumClass * model_params_.kNumOutputBoxFeature * sizeof(float));
+
+    /** copy model outputs into global buffers */
+    memcpy(&host_score_[0 * model_params_.kNumAnchorPerCls], output.cls_pred_0.data(), model_params_.kNumAnchorPerCls * sizeof(float));
+    memcpy(&host_score_[1 * model_params_.kNumAnchorPerCls], output.cls_pred_12.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
+    memcpy(&host_score_[5 * model_params_.kNumAnchorPerCls], output.cls_pred_34.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
+    memcpy(&host_score_[9 * model_params_.kNumAnchorPerCls], output.cls_pred_5.data(), model_params_.kNumAnchorPerCls * sizeof(float));
+    memcpy(&host_score_[10 * model_params_.kNumAnchorPerCls], output.cls_pred_67.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
+    memcpy(&host_score_[14 * model_params_.kNumAnchorPerCls], output.cls_pred_89.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
+    memcpy(host_box_, output.box_preds.data(), model_params_.kNumAnchorPerCls * model_params_.kNumClass * model_params_.kNumOutputBoxFeature * sizeof(float));
     return true;
 }
 
@@ -262,9 +308,14 @@ bool PointPillarsPipeline::DoScatter()
     );
 }
 
-bool PointPillarsPipeline::DoPostProc()
+bool PointPillarsPipeline::DoPostProc(std::vector<POINTPILLARS_BBOX3D_t>& bboxes)
 {
-    return true;
+    return postproc_op_->DoPostProcST(
+        bboxes,
+        host_filtered_count_,
+        host_box_, 
+        host_score_
+    );
 }
 
 void PointPillarsPipeline::AllocBuffers()

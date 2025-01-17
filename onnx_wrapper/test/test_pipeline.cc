@@ -186,7 +186,30 @@ TEST_F(TestPointpillarsPipeline, InferBackboneOnnxModel)
     EXPECT_TRUE(ret);
 
     /** Tensor CRC for testdata/n015-2018-11-21-19-38-26+0800__LIDAR_TOP__1542801007446751.pcd.txt */
-    int32_t rpn_buffers_7_cpu = gfCalcFloatsCRC(rpn_buffers_[7], model_params_.kNumAnchorPerCls * model_params_.kNumClass * model_params_.kNumOutputBoxFeature, 6);
-    LOGPF("rpn_buffers_7_cpu: 0x%x", rpn_buffers_7_cpu);
-    EXPECT_EQ(rpn_buffers_7_cpu, 0x6fa6b143);
+    int32_t host_box_crc = gfCalcFloatsCRC(host_box_, model_params_.kNumAnchorPerCls * model_params_.kNumClass * model_params_.kNumOutputBoxFeature, 6);
+    LOGPF("host_box_crc: 0x%x", host_box_crc);
+    EXPECT_EQ(host_box_crc, 0x6fa6b143);
+}
+
+TEST_F(TestPointpillarsPipeline, RunPipeline)
+{
+    EXPECT_TRUE(LoadModels());
+
+    std::vector<POINTPILLARS_BBOX3D_t> bboxes;
+    bool ret = RunPipeline(
+        bboxes,
+        points_array_,
+        num_points_
+    );
+    EXPECT_TRUE(ret);
+    RLOGI("total bboxes: %ld", bboxes.size());
+    /** output bboxes for testdata/n015-2018-11-21-19-38-26+0800__LIDAR_TOP__1542801007446751.pcd.txt */
+    EXPECT_EQ(bboxes.size(), 15);
+    for(size_t i=0; i<bboxes.size(); i++)
+    {
+        const POINTPILLARS_BBOX3D_t& box_i = bboxes[i];
+        RLOGI("box[%d]: xyz = (%.2f, %.2f, %.2f), wlh = (%.2f, %.2f, %.2f), yaw = %.2f, cls = %d, score = %.2f",\
+               i, box_i.x, box_i.y, box_i.z, box_i.dx, box_i.dy, box_i.dz, box_i.yaw, box_i.cls, box_i.score);
+    }
+    PointpillarsOpsPostProc::SaveBox3dToFile(global_params_.OutputDetsFile, bboxes);
 }

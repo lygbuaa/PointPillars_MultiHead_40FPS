@@ -112,7 +112,6 @@ void PointPillars::InitParams()
     kRpnDirOutputSize = kNumAnchor * 2;
 }
 
-
 PointPillars::PointPillars(const float score_threshold,
                            const float nms_overlap_threshold,
                            const bool use_onnx,

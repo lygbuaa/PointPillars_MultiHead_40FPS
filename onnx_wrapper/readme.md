@@ -1,3 +1,8 @@
-### onnx export
-1. follow https://mmdeploy.readthedocs.io/en/latest/04-supported-codebases/mmdet3d.html
-2. using onnx opset-11, make sure onnxruntime <= 1.16.3
+### build
+1. `bash tools/build_onnx_demo.sh`
+
+### run gtest case
+1. `bash onnx_wrapper/launch/run_onnx_test.sh`
+
+### run demo
+1. `onnx_wrapper/launch/run_onnx_demo.sh`
