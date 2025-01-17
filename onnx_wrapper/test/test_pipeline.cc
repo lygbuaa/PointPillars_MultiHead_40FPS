@@ -24,6 +24,7 @@ protected:
     virtual void TearDown()
     {
         RLOGI("TestPointpillarsPipeline TearDown");
+        EXPECT_TRUE(Stop());
     }
 };
 
@@ -123,4 +124,69 @@ TEST_F(TestPointpillarsPipeline, RunPreProc)
     int32_t dev_pfe_gather_feature_crc = gfCalcFloatsCRC(dev_pfe_gather_feature_, model_params_.kMaxNumPillars * model_params_.kMaxNumPointsPerPillar * model_params_.kNumGatherPointFeature, 6);
     LOGPF("dev_pfe_gather_feature_crc: 0x%x", dev_pfe_gather_feature_crc);
     EXPECT_EQ(dev_pfe_gather_feature_crc, 0x572adfff);
+}
+
+TEST_F(TestPointpillarsPipeline, InferPfeOnnxModel)
+{
+    bool ret = DoPreProc(
+        points_array_,
+        num_points_
+    );
+    EXPECT_TRUE(ret);
+
+    EXPECT_TRUE(LoadModels());
+
+    ret = InferPfeOnnxModel();
+    EXPECT_TRUE(ret);
+    /** Tensor CRC for testdata/n015-2018-11-21-19-38-26+0800__LIDAR_TOP__1542801007446751.pcd.txt */
+    int32_t pfe_buffers_1_crc = gfCalcFloatsCRC(pfe_buffers_[1], model_params_.kMaxNumPillars * 64, 6);
+    LOGPF("pfe_buffers_1_crc: 0x%x", pfe_buffers_1_crc);
+    EXPECT_EQ(pfe_buffers_1_crc, 0xeca540e2);
+}
+
+TEST_F(TestPointpillarsPipeline, DoScatter)
+{
+    bool ret = DoPreProc(
+        points_array_,
+        num_points_
+    );
+    EXPECT_TRUE(ret);
+
+    EXPECT_TRUE(LoadModels());
+
+    ret = InferPfeOnnxModel();
+    EXPECT_TRUE(ret);
+
+    ret = DoScatter();
+    EXPECT_TRUE(ret);
+
+    /** Tensor CRC for testdata/n015-2018-11-21-19-38-26+0800__LIDAR_TOP__1542801007446751.pcd.txt */
+    int32_t dev_scattered_feature_crc = gfCalcFloatsCRC(dev_scattered_feature_, model_params_.kNumThreads * model_params_.kGridYSize * model_params_.kGridXSize, 6);
+    LOGPF("dev_scattered_feature_crc: 0x%x", dev_scattered_feature_crc);
+    EXPECT_EQ(dev_scattered_feature_crc, 0x2c386bd4);
+}
+
+TEST_F(TestPointpillarsPipeline, InferBackboneOnnxModel)
+{
+    bool ret = DoPreProc(
+        points_array_,
+        num_points_
+    );
+    EXPECT_TRUE(ret);
+
+    EXPECT_TRUE(LoadModels());
+
+    ret = InferPfeOnnxModel();
+    EXPECT_TRUE(ret);
+
+    ret = DoScatter();
+    EXPECT_TRUE(ret);
+
+    ret = InferBackboneOnnxModel();
+    EXPECT_TRUE(ret);
+
+    /** Tensor CRC for testdata/n015-2018-11-21-19-38-26+0800__LIDAR_TOP__1542801007446751.pcd.txt */
+    int32_t rpn_buffers_7_cpu = gfCalcFloatsCRC(rpn_buffers_[7], model_params_.kNumAnchorPerCls * model_params_.kNumClass * model_params_.kNumOutputBoxFeature, 6);
+    LOGPF("rpn_buffers_7_cpu: 0x%x", rpn_buffers_7_cpu);
+    EXPECT_EQ(rpn_buffers_7_cpu, 0x6fa6b143);
 }

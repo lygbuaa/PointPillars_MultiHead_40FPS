@@ -1,26 +1,13 @@
 #include <iostream>
 #include <fstream>
 #include <yaml-cpp/yaml.h>
+#include "crc_checker.h"
 #include "pointpillars_pipeline.h"
 
 bool PointPillarsPipeline::Init(const char* global_config_path, const char* model_config_path)
 {
     LoadGlobalConfigs(global_config_path);
     LoadModelConfigs(model_config_path);
-
-    ort_pfe_model_ = std::make_shared<OrtPointPillarsPfeInfer>();
-    if(!ort_pfe_model_->LoadONNXModel(global_params_.PfeOnnxFile))
-    {
-        RLOGE("load onnx model %s failed.", global_params_.PfeOnnxFile.c_str());
-        return false;
-    }
-
-    ort_backbone_model_ = std::make_shared<OrtPointPillarsBackboneInfer>();
-    if(!ort_backbone_model_->LoadONNXModel(global_params_.BackboneOnnxFile))
-    {
-        RLOGE("load onnx model %s failed.", global_params_.BackboneOnnxFile.c_str());
-        return false;
-    }
 
     AllocBuffers();
     ClearBuffers();
@@ -41,9 +28,32 @@ bool PointPillarsPipeline::Init(const char* global_config_path, const char* mode
         model_params_.kMinYRange, 
         model_params_.kMinZRange
     );
-    scatter_op_ = std::make_shared<PointpillarsOpsScatter>();
+    scatter_op_ = std::make_shared<PointpillarsOpsScatter>(
+        model_params_.kNumThreads,
+        model_params_.kGridXSize,
+        model_params_.kGridYSize
+    );
     postproc_op_ = std::make_shared<PointpillarsOpsPostProc>();
     nms_op_ = std::make_shared<PointpillarsOpsNMS>();
+
+    return true;
+}
+
+bool PointPillarsPipeline::LoadModels()
+{
+    ort_pfe_model_ = std::make_shared<OrtPointPillarsPfeInfer>();
+    if(!ort_pfe_model_->LoadONNXModel(global_params_.PfeOnnxFile))
+    {
+        RLOGE("load onnx model %s failed.", global_params_.PfeOnnxFile.c_str());
+        return false;
+    }
+
+    ort_backbone_model_ = std::make_shared<OrtPointPillarsBackboneInfer>();
+    if(!ort_backbone_model_->LoadONNXModel(global_params_.BackboneOnnxFile))
+    {
+        RLOGE("load onnx model %s failed.", global_params_.BackboneOnnxFile.c_str());
+        return false;
+    }
 
     return true;
 }
@@ -151,7 +161,7 @@ void PointPillarsPipeline::LoadModelConfigs(const char* model_yaml_file)
     model_params_.kNumOutputBoxFeature = params["MODEL"]["DENSE_HEAD"]["TARGET_ASSIGNER_CONFIG"]["BOX_CODER_CONFIG"]["code_size"].as<int>();
     model_params_.kBatchSize = 1;
     model_params_.kNumIndsForScan = 1024;
-    model_params_.kNumThreads = 8;
+    model_params_.kNumThreads = 64;     /** kNumThreads must be the same with PFE model output channel, which is (64) */
     model_params_.kNumBoxCorners = 8;
     model_params_.kAnchorStrides = 4;
     model_params_.kNmsPreMaxsize = params["MODEL"]["POST_PROCESSING"]["NMS_CONFIG"]["NMS_PRE_MAXSIZE"].as<int>();
@@ -181,7 +191,7 @@ void PointPillarsPipeline::LoadModelConfigs(const char* model_yaml_file)
     model_params_.kGridXSize = static_cast<int>((model_params_.kMaxXRange - model_params_.kMinXRange) / model_params_.kPillarXSize); //512
     model_params_.kGridYSize = static_cast<int>((model_params_.kMaxYRange - model_params_.kMinYRange) / model_params_.kPillarYSize); //512
     model_params_.kGridZSize = static_cast<int>((model_params_.kMaxZRange - model_params_.kMinZRange) / model_params_.kPillarZSize); //1
-    model_params_.kRpnInputSize = 64 * model_params_.kGridYSize * model_params_.kGridXSize;
+    model_params_.kRpnInputSize = model_params_.kNumThreads * model_params_.kGridYSize * model_params_.kGridXSize;
 
     model_params_.kNumAnchorXinds = static_cast<int>(model_params_.kGridXSize / model_params_.kAnchorStrides); //Width
     model_params_.kNumAnchorYinds = static_cast<int>(model_params_.kGridYSize / model_params_.kAnchorStrides); //Hight
@@ -193,24 +203,63 @@ void PointPillarsPipeline::LoadModelConfigs(const char* model_yaml_file)
     model_params_.kRpnDirOutputSize = model_params_.kNumAnchor * 2;
 }
 
-bool PointPillarsPipeline::DoPreProc()
+bool PointPillarsPipeline::DoPreProc(
+    const float* dev_points,
+    const int in_num_points
+)
 {
-    return true;
+    return preproc_op_->RunPreProc(
+            dev_x_coors_, 
+            dev_y_coors_,
+            dev_num_points_per_pillar_, 
+            dev_pillar_point_feature_, 
+            dev_pillar_coors_,
+            dev_sparse_pillar_map_, 
+            host_pillar_count_ ,
+            dev_pfe_gather_feature_,
+            dev_points,
+            in_num_points
+        );
 }
 
 bool PointPillarsPipeline::InferPfeOnnxModel()
 {
+    POINTPILLARS_PFE_MODEL_INPUT_t input;
+    POINTPILLARS_PFE_MODEL_OUTPUT_t output;
+
+    input.pillar_features.assign(dev_pfe_gather_feature_, dev_pfe_gather_feature_ + model_params_.kMaxNumPillars * model_params_.kMaxNumPointsPerPillar * model_params_.kNumGatherPointFeature);
+    ort_pfe_model_->RunPointpillarsPfeModel(input, output);
+    memcpy(pfe_buffers_[1], output.learned_features.data(), model_params_.kMaxNumPillars * model_params_.kNumThreads * sizeof(float));
     return true;
 }
 
 bool PointPillarsPipeline::InferBackboneOnnxModel()
 {
+    POINTPILLARS_BACKBONE_MODEL_INPUT_t input;
+    POINTPILLARS_BACKBONE_MODEL_OUTPUT_t output;
+
+    input.pseudo_image.assign(dev_scattered_feature_, dev_scattered_feature_ + model_params_.kNumThreads * model_params_.kGridYSize * model_params_.kGridXSize);
+    ort_backbone_model_ -> RunPointpillarsBackboneModel(input, output);
+
+    memcpy(rpn_buffers_[1], output.cls_pred_0.data(), model_params_.kNumAnchorPerCls * sizeof(float));
+    memcpy(rpn_buffers_[2], output.cls_pred_12.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
+    memcpy(rpn_buffers_[3], output.cls_pred_34.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
+    memcpy(rpn_buffers_[4], output.cls_pred_5.data(), model_params_.kNumAnchorPerCls * sizeof(float));
+    memcpy(rpn_buffers_[5], output.cls_pred_67.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
+    memcpy(rpn_buffers_[6], output.cls_pred_89.data(), model_params_.kNumAnchorPerCls * 4 * sizeof(float));
+    memcpy(rpn_buffers_[7], output.box_preds.data(), model_params_.kNumAnchorPerCls * model_params_.kNumClass * model_params_.kNumOutputBoxFeature * sizeof(float));
     return true;
 }
 
 bool PointPillarsPipeline::DoScatter()
 {
-    return true;
+    return scatter_op_ -> DoScatterST(
+        dev_scattered_feature_,
+        host_pillar_count_[0],
+        dev_x_coors_,
+        dev_y_coors_,
+        pfe_buffers_[1]
+    );
 }
 
 bool PointPillarsPipeline::DoPostProc()
@@ -230,9 +279,19 @@ void PointPillarsPipeline::AllocBuffers()
     dev_cumsum_along_y_ = new int[model_params_.kNumIndsForScan * model_params_.kNumIndsForScan];
 
     dev_pfe_gather_feature_ = new float[model_params_.kMaxNumPillars * model_params_.kMaxNumPointsPerPillar * model_params_.kNumGatherPointFeature];
-    pfe_buffers_[0] = new float[model_params_.kMaxNumPillars * model_params_.kMaxNumPointsPerPillar * model_params_.kNumGatherPointFeature];
+    /** pfe_buffers_[0] is for PFE cuda input */
+    // pfe_buffers_[0] = new float[model_params_.kMaxNumPillars * model_params_.kMaxNumPointsPerPillar * model_params_.kNumGatherPointFeature];
+    pfe_buffers_[0] = dev_pfe_gather_feature_;
+    /** pfe_buffers_[1] is for PFE cuda output */
     pfe_buffers_[1] = new float[model_params_.kMaxNumPillars * 64];
-    rpn_buffers_[0] = new float[model_params_.kRpnInputSize];
+
+    host_box_ =  new float[model_params_.kNumAnchorPerCls * model_params_.kNumClass * model_params_.kNumOutputBoxFeature];
+    host_score_ =  new float[model_params_.kNumAnchorPerCls * 18];
+    host_filtered_count_ = new int[model_params_.kNumClass];
+
+    dev_scattered_feature_ = new float[model_params_.kNumThreads * model_params_.kGridYSize * model_params_.kGridXSize];
+    // rpn_buffers_[0] = new float[model_params_.kRpnInputSize];
+    rpn_buffers_[0] = dev_scattered_feature_;
     rpn_buffers_[1] = new float[model_params_.kNumAnchorPerCls];
     rpn_buffers_[2] = new float[model_params_.kNumAnchorPerCls * 2 * 2];
     rpn_buffers_[3] = new float[model_params_.kNumAnchorPerCls * 2 * 2];
@@ -240,11 +299,6 @@ void PointPillarsPipeline::AllocBuffers()
     rpn_buffers_[5] = new float[model_params_.kNumAnchorPerCls * 2 * 2];
     rpn_buffers_[6] = new float[model_params_.kNumAnchorPerCls * 2 * 2];
     rpn_buffers_[7] = new float[model_params_.kNumAnchorPerCls * model_params_.kNumClass * model_params_.kNumOutputBoxFeature];
-
-    dev_scattered_feature_ = new float[model_params_.kNumThreads * model_params_.kGridYSize * model_params_.kGridXSize];
-    host_box_ =  new float[model_params_.kNumAnchorPerCls * model_params_.kNumClass * model_params_.kNumOutputBoxFeature];
-    host_score_ =  new float[model_params_.kNumAnchorPerCls * 18];
-    host_filtered_count_ = new int[model_params_.kNumClass];
 }
 
 void PointPillarsPipeline::ClearBuffers()
@@ -256,7 +310,7 @@ void PointPillarsPipeline::ClearBuffers()
     memset(dev_pillar_coors_, 0, model_params_.kMaxNumPillars * 4 * sizeof(float));
     memset(dev_sparse_pillar_map_, 0, model_params_.kNumIndsForScan * model_params_.kNumIndsForScan * sizeof(int));
     memset(dev_pfe_gather_feature_, 0, model_params_.kMaxNumPillars * model_params_.kMaxNumPointsPerPillar * model_params_.kNumGatherPointFeature * sizeof(float));
-    memset(pfe_buffers_[0], 0, model_params_.kMaxNumPillars * model_params_.kMaxNumPointsPerPillar * model_params_.kNumGatherPointFeature * sizeof(float));
+    // memset(pfe_buffers_[0], 0, model_params_.kMaxNumPillars * model_params_.kMaxNumPointsPerPillar * model_params_.kNumGatherPointFeature * sizeof(float));
     memset(pfe_buffers_[1], 0, model_params_.kMaxNumPillars * 64 * sizeof(float));
     memset(dev_scattered_feature_, 0, model_params_.kNumThreads * model_params_.kGridYSize * model_params_.kGridXSize * sizeof(float));
 }
@@ -272,9 +326,10 @@ void PointPillarsPipeline::FreeBuffers()
     delete[] dev_cumsum_along_x_;
     delete[] dev_cumsum_along_y_;
     delete[] dev_pfe_gather_feature_;
-    delete[] pfe_buffers_[0];
+    // delete[] pfe_buffers_[0];
     delete[] pfe_buffers_[1];
-    delete[] rpn_buffers_[0];
+    delete[] dev_scattered_feature_;
+    // delete[] rpn_buffers_[0];
     delete[] rpn_buffers_[1];
     delete[] rpn_buffers_[2];
     delete[] rpn_buffers_[3];
@@ -282,7 +337,6 @@ void PointPillarsPipeline::FreeBuffers()
     delete[] rpn_buffers_[5];
     delete[] rpn_buffers_[6];
     delete[] rpn_buffers_[7];
-    delete[] dev_scattered_feature_;
     delete[] host_box_;
     delete[] host_score_;
     delete[] host_filtered_count_;

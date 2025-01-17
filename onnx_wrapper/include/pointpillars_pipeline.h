@@ -87,6 +87,7 @@ public:
     bool RunPipeline();
 
 protected:
+    bool LoadModels();
     size_t LoadPCDFile(const char* pcd_txt_path, const int num_feature=5);
     void LoadGlobalConfigs(const char* global_yaml_file);
     void LoadModelConfigs(const char* model_yaml_file);
@@ -95,10 +96,13 @@ protected:
     void ClearBuffers();
     void FreeBuffers();
 
-    bool DoPreProc();
+    bool DoPreProc(
+        const float* dev_points,
+        const int in_num_points
+    );
     bool InferPfeOnnxModel();
-    bool InferBackboneOnnxModel();
     bool DoScatter();
+    bool InferBackboneOnnxModel();
     bool DoPostProc();
 
 protected:
@@ -125,7 +129,9 @@ protected:
     float* dev_pillar_coors_;
     float* dev_points_mean_;
 
+    /** input of PFE model */
     float* dev_pfe_gather_feature_;
+    /** output of PFE model */
     float* pfe_buffers_[2];
     float* rpn_buffers_[8];
 

@@ -78,6 +78,7 @@ bool PointpillarsOpsPreProc::RunPreProc(
 )
 {
     ClearBuffers();
+    *host_pillar_count = 0;
 
     bool ret = MakePillarHistoST(
         dev_pillar_point_feature_in_coors_,
@@ -174,6 +175,7 @@ bool PointpillarsOpsPreProc::RunPreProc(
         return ret;
     }
 
+    *host_pillar_count = *dev_pillar_count_;
     return true;
 }
 

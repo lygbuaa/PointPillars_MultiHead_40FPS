@@ -45,6 +45,8 @@
 #include "pointpillars.h"
 
 #include <chrono>
+#include <cstring>
+#include "crc_checker.h"
 #include <iostream>
 #include <iostream>
 
@@ -403,6 +405,13 @@ void PointPillars::DoInference(const float* in_points_array,
     cudaDeviceSynchronize();
     auto pfe_end = std::chrono::high_resolution_clock::now();
     // DEVICE_SAVE<float>(reinterpret_cast<float*>(pfe_buffers_[1]),  kMaxNumPillars * 64 , "1_Model_pfe_output_buffers_[1]");
+    float* pfe_buffers_1_cpu = new float[kMaxNumPillars * 64];
+    memset(pfe_buffers_1_cpu, 0, kMaxNumPillars * 64 * sizeof(float));
+    GPU_CHECK(cudaMemcpy(pfe_buffers_1_cpu, pfe_buffers_[1], kMaxNumPillars * 64 * sizeof(float), cudaMemcpyDeviceToHost));
+    // int32_t dev_scattered_feature_crc = gfCalcFloatsCRC(dev_scattered_feature_cpu, kNumThreads * kGridYSize * kGridXSize, 6);
+    int32_t pfe_buffers_1_crc = gfCalcFloatsSUM(pfe_buffers_1_cpu, kMaxNumPillars * 64, 0);
+    LOGPF("pfe_buffers_1_crc: 0x%x", pfe_buffers_1_crc);
+    delete[] pfe_buffers_1_cpu;
 
     // [STEP 4] : scatter pillar feature
     auto scatter_start = std::chrono::high_resolution_clock::now();
@@ -413,6 +422,14 @@ void PointPillars::DoInference(const float* in_points_array,
     auto scatter_end = std::chrono::high_resolution_clock::now();   
     // DEVICE_SAVE<float>(dev_scattered_feature_ ,  kRpnInputSize,"2_Model_backbone_input_dev_scattered_feature");
 
+    float* dev_scattered_feature_cpu = new float[kNumThreads * kGridYSize * kGridXSize];
+    memset(dev_scattered_feature_cpu, 0, kNumThreads * kGridYSize * kGridXSize * sizeof(float));
+    GPU_CHECK(cudaMemcpy(dev_scattered_feature_cpu, dev_scattered_feature_, kNumThreads * kGridYSize * kGridXSize * sizeof(float), cudaMemcpyDeviceToHost));
+    // int32_t dev_scattered_feature_crc = gfCalcFloatsCRC(dev_scattered_feature_cpu, kNumThreads * kGridYSize * kGridXSize, 0);
+    int32_t dev_scattered_feature_crc = gfCalcFloatsSUM(dev_scattered_feature_cpu, kNumThreads * kGridYSize * kGridXSize, 0);
+    LOGPF("dev_scattered_feature_crc: 0x%x", dev_scattered_feature_crc);
+    delete[] dev_scattered_feature_cpu;
+
     // [STEP 5] : backbone forward
     auto backbone_start = std::chrono::high_resolution_clock::now();
     GPU_CHECK(cudaMemcpyAsync(rpn_buffers_[0], dev_scattered_feature_,
@@ -421,6 +438,14 @@ void PointPillars::DoInference(const float* in_points_array,
     backbone_context_->enqueueV2(rpn_buffers_, stream, nullptr);
     cudaDeviceSynchronize();
     auto backbone_end = std::chrono::high_resolution_clock::now();
+
+    float* rpn_buffers_7_cpu = new float[kNumAnchorPerCls * kNumClass * kNumOutputBoxFeature];
+    memset(rpn_buffers_7_cpu, 0, kNumAnchorPerCls * kNumClass * kNumOutputBoxFeature * sizeof(float));
+    GPU_CHECK(cudaMemcpy(rpn_buffers_7_cpu, rpn_buffers_[7], kNumAnchorPerCls * kNumClass * kNumOutputBoxFeature * sizeof(float), cudaMemcpyDeviceToHost));
+    // int32_t rpn_buffers_7_crc = gfCalcFloatsCRC(rpn_buffers_7_cpu, kNumAnchorPerCls * kNumClass * kNumOutputBoxFeature, 6);
+    int32_t rpn_buffers_7_crc = gfCalcFloatsSUM(rpn_buffers_7_cpu, kNumAnchorPerCls * kNumClass * kNumOutputBoxFeature, 0);
+    LOGPF("rpn_buffers_7_crc: 0x%x", rpn_buffers_7_crc);
+    delete[] rpn_buffers_7_cpu;
 
     // [STEP 6]: postprocess (multihead)
     auto postprocess_start = std::chrono::high_resolution_clock::now();

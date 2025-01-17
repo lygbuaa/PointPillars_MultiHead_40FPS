@@ -43,11 +43,11 @@ void OrtPointPillarsBackboneInfer::RunPointpillarsBackboneModel(POINTPILLARS_BAC
     RLOGI("cls_pred_0_size: %ld", cls_pred_0_size);
 
     float* cls_pred_12;
-    CheckStatus(g_ort_->GetTensorMutableData(output_tensors[2], reinterpret_cast<void**>(&cls_pred_12)));
+    CheckStatus(g_ort_->GetTensorMutableData(output_tensors[1], reinterpret_cast<void**>(&cls_pred_12)));
     size_t cls_pred_12_size = 1;
-    for(size_t k=0; k<output_node_dims[2].size(); k++)
+    for(size_t k=0; k<output_node_dims[1].size(); k++)
     {
-        cls_pred_12_size *= output_node_dims[2][k];
+        cls_pred_12_size *= output_node_dims[1][k];
     }
     output.cls_pred_12.assign(cls_pred_12, cls_pred_12+cls_pred_12_size);
     RLOGI("cls_pred_12: %ld", cls_pred_12_size);
@@ -63,41 +63,41 @@ void OrtPointPillarsBackboneInfer::RunPointpillarsBackboneModel(POINTPILLARS_BAC
     RLOGI("cls_pred_34: %ld", cls_pred_34_size);
 
     float* cls_pred_5;
-    CheckStatus(g_ort_->GetTensorMutableData(output_tensors[2], reinterpret_cast<void**>(&cls_pred_5)));
+    CheckStatus(g_ort_->GetTensorMutableData(output_tensors[3], reinterpret_cast<void**>(&cls_pred_5)));
     size_t cls_pred_5_size = 1;
-    for(size_t k=0; k<output_node_dims[2].size(); k++)
+    for(size_t k=0; k<output_node_dims[3].size(); k++)
     {
-        cls_pred_5_size *= output_node_dims[2][k];
+        cls_pred_5_size *= output_node_dims[3][k];
     }
     output.cls_pred_5.assign(cls_pred_5, cls_pred_5+cls_pred_5_size);
     RLOGI("cls_pred_5: %ld", cls_pred_5_size);
 
     float* cls_pred_67;
-    CheckStatus(g_ort_->GetTensorMutableData(output_tensors[2], reinterpret_cast<void**>(&cls_pred_67)));
+    CheckStatus(g_ort_->GetTensorMutableData(output_tensors[4], reinterpret_cast<void**>(&cls_pred_67)));
     size_t cls_pred_67_size = 1;
-    for(size_t k=0; k<output_node_dims[2].size(); k++)
+    for(size_t k=0; k<output_node_dims[4].size(); k++)
     {
-        cls_pred_67_size *= output_node_dims[2][k];
+        cls_pred_67_size *= output_node_dims[4][k];
     }
     output.cls_pred_67.assign(cls_pred_67, cls_pred_67+cls_pred_67_size);
     RLOGI("cls_pred_67: %ld", cls_pred_67_size);
 
     float* cls_pred_89;
-    CheckStatus(g_ort_->GetTensorMutableData(output_tensors[2], reinterpret_cast<void**>(&cls_pred_89)));
+    CheckStatus(g_ort_->GetTensorMutableData(output_tensors[5], reinterpret_cast<void**>(&cls_pred_89)));
     size_t cls_pred_89_size = 1;
-    for(size_t k=0; k<output_node_dims[2].size(); k++)
+    for(size_t k=0; k<output_node_dims[5].size(); k++)
     {
-        cls_pred_89_size *= output_node_dims[2][k];
+        cls_pred_89_size *= output_node_dims[5][k];
     }
     output.cls_pred_89.assign(cls_pred_89, cls_pred_89+cls_pred_89_size);
     RLOGI("cls_pred_89: %ld", cls_pred_89_size);
 
     float* box_preds;
-    CheckStatus(g_ort_->GetTensorMutableData(output_tensors[2], reinterpret_cast<void**>(&box_preds)));
+    CheckStatus(g_ort_->GetTensorMutableData(output_tensors[6], reinterpret_cast<void**>(&box_preds)));
     size_t box_preds_size = 1;
-    for(size_t k=0; k<output_node_dims[2].size(); k++)
+    for(size_t k=0; k<output_node_dims[6].size(); k++)
     {
-        box_preds_size *= output_node_dims[2][k];
+        box_preds_size *= output_node_dims[6][k];
     }
     output.box_preds.assign(box_preds, box_preds+box_preds_size);
     RLOGI("box_preds: %ld", box_preds_size);
