@@ -92,6 +92,8 @@ bool PointPillarsPipeline::RunPipeline(
     const int in_num_points
 )
 {
+    ClearBuffers();
+
     bool ret = DoPreProc(
         dev_points,
         in_num_points
@@ -354,6 +356,7 @@ void PointPillarsPipeline::AllocBuffers()
 
 void PointPillarsPipeline::ClearBuffers()
 {
+    HANG_STOPWATCH();
     memset(dev_num_points_per_pillar_, 0, model_params_.kMaxNumPillars * sizeof(float));
     memset(dev_x_coors_, 0, model_params_.kMaxNumPillars * sizeof(int));
     memset(dev_y_coors_, 0, model_params_.kMaxNumPillars * sizeof(int));

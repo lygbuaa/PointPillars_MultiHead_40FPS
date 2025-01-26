@@ -57,6 +57,7 @@ PointpillarsOpsPreProc::~PointpillarsOpsPreProc()
 
 void PointpillarsOpsPreProc::ClearBuffers()
 {
+    HANG_STOPWATCH();
     memset(dev_pillar_point_feature_in_coors_, 0, grid_y_size_ * grid_x_size_ * max_num_points_per_pillar_ * num_point_feature_ * sizeof(float));
     memset(dev_pillar_count_histo_, 0, grid_y_size_ * grid_x_size_ * sizeof(int));
     memset(dev_counter_, 0, sizeof(int));
